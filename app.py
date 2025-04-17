@@ -157,26 +157,90 @@ def display_analysis_results(analysis):
             st.subheader("Detected Speech:")
             st.markdown(analysis['highlighted_text'])
         
-        # Add feedback options
-        st.markdown("### Was this analysis helpful?")
+        # Enhanced feedback options for model improvement
+        st.markdown("### Help Improve Our Model")
+        
+        # Create a more descriptive feedback section
+        st.markdown("""
+        If our prediction was incorrect, you can help improve the model by telling us 
+        whether this call is actually a scam or legitimate. Your feedback helps the 
+        model learn and make better predictions for future calls.
+        """)
+        
+        # Create three columns for the feedback buttons and status message
         feedback_col1, feedback_col2, feedback_col3 = st.columns([1, 1, 2])
         
-        if feedback_col1.button("👍 Correct"):
+        # Record user feedback
+        if 'feedback_given' not in st.session_state:
+            st.session_state.feedback_given = False
+            
+        # Create buttons for explicit user feedback
+        mark_as_scam = feedback_col1.button("🚨 Mark as SCAM", 
+            help="Use this if you know for sure this is a scam call")
+            
+        mark_as_legitimate = feedback_col2.button("✅ Mark as LEGITIMATE", 
+            help="Use this if you know for sure this is a legitimate call")
+        
+        # Process user feedback and update model
+        if mark_as_scam and not st.session_state.feedback_given:
             st.session_state.feedback_count += 1
-            st.success("Thanks for your feedback! This helps improve our model.")
+            st.session_state.feedback_given = True
             
-        if feedback_col2.button("👎 Incorrect"):
-            st.session_state.feedback_count += 1
+            # User says it's a scam
+            user_label = True
             
-            # Get the opposite prediction
-            correct_label = not analysis['prediction']
+            # Check if this disagrees with our prediction
+            prediction_changed = not analysis['prediction']
             
-            # Update model with feedback
-            if 'text' in analysis and 'waveform' in analysis:
+            # Update model with user feedback
+            if 'text' in analysis and 'audio_path' in analysis:
                 features = st.session_state.audio_processor.extract_features(analysis['audio_path'])
-                st.session_state.model.update_with_feedback(features, analysis['text'], correct_label)
+                feedback_id = st.session_state.model.update_with_feedback(features, analysis['text'], user_label)
+                
+                # Show feedback message
+                if prediction_changed:
+                    st.warning(f"Thanks for the correction! We've updated our model based on your feedback (ID: {feedback_id[:8]}).")
+                else:
+                    st.success(f"Thanks for confirming our analysis! Your feedback strengthens our model (ID: {feedback_id[:8]}).")
+        
+        elif mark_as_legitimate and not st.session_state.feedback_given:
+            st.session_state.feedback_count += 1
+            st.session_state.feedback_given = True
             
-            st.warning("Thanks for correcting us! This feedback helps improve our model.")
+            # User says it's legitimate
+            user_label = False
+            
+            # Check if this disagrees with our prediction
+            prediction_changed = analysis['prediction']
+            
+            # Update model with user feedback
+            if 'text' in analysis and 'audio_path' in analysis:
+                features = st.session_state.audio_processor.extract_features(analysis['audio_path'])
+                feedback_id = st.session_state.model.update_with_feedback(features, analysis['text'], user_label)
+                
+                # Show feedback message
+                if prediction_changed:
+                    st.warning(f"Thanks for the correction! We've updated our model based on your feedback (ID: {feedback_id[:8]}).")
+                else:
+                    st.success(f"Thanks for confirming our analysis! Your feedback strengthens our model (ID: {feedback_id[:8]}).")
+        
+        # Feedback section
+        if st.session_state.feedback_given:
+            # Information about model retraining
+            with st.expander("How your feedback improves the model"):
+                st.markdown("""
+                Your feedback is used to:
+                1. Immediately adjust keyword weights for better detection
+                2. Store the audio and your feedback for periodic model retraining
+                3. Improve detection patterns for similar calls in the future
+                
+                The model continuously improves as it receives more user feedback, making it 
+                better at detecting new scam patterns and reducing false positives.
+                """)
+        else:
+            # Show message explaining the importance of feedback
+            with feedback_col3:
+                st.info("Your feedback helps train the model to recognize new scam patterns.")
 
 def show_analysis_visuals(analysis):
     """Display visualizations for the audio analysis"""

@@ -261,15 +261,82 @@ class ScamDetectionModel:
         """
         Update the model with user feedback.
         
-        In a real implementation, this would collect the data for 
-        later retraining of the model.
+        This collects user feedback and uses it to adapt the model weights
+        for improved predictions in the future.
         
         Args:
             audio_features: Extracted audio features
             text: Transcribed text
             user_label: User-provided label (True for scam, False for not scam)
         """
-        # This would save the example for later model retraining
-        # For demonstration purposes, we just acknowledge it
+        # Log feedback for monitoring
         print(f"Feedback received: {'Scam' if user_label else 'Not Scam'}")
-        print("This data would be saved for model retraining in a real implementation.")
+        
+        # Store feedback data for future model retraining
+        feedback_data = {
+            'text': text,
+            'features': audio_features,
+            'user_label': user_label,
+            'timestamp': time.time()
+        }
+        
+        # Ensure we have a directory to store feedback data
+        import os
+        feedback_dir = os.path.join(self.model_path, 'user_feedback')
+        os.makedirs(feedback_dir, exist_ok=True)
+        
+        # Store the feedback data (in a real system, this would be in a database)
+        import pickle
+        import uuid
+        feedback_id = str(uuid.uuid4())
+        feedback_file = os.path.join(feedback_dir, f"feedback_{feedback_id}.pkl")
+        with open(feedback_file, 'wb') as f:
+            pickle.dump(feedback_data, f)
+        
+        # Immediate adaptation: Update keyword weights based on feedback
+        self._adapt_model_with_feedback(text, user_label)
+        
+        return feedback_id
+        
+    def _adapt_model_with_feedback(self, text, user_label):
+        """
+        Adapt the model based on user feedback to improve future predictions.
+        
+        This function implements online learning by updating the keyword weights
+        based on the user's feedback.
+        
+        Args:
+            text: Transcribed text from the audio
+            user_label: User-provided label (True for scam, False for not scam)
+        """
+        if text is None or not text:
+            return  # Can't adapt without text
+            
+        # Learning rate for weight updates (smaller means more conservative updates)
+        learning_rate = 0.05
+        
+        # Find keywords in the text
+        found_keywords = []
+        for keyword in self.scam_keyword_weights:
+            if keyword in text:
+                found_keywords.append(keyword)
+                
+        # If classified as scam but model was wrong (false positive)
+        if not user_label and len(found_keywords) > 0:
+            # Reduce weights for incorrectly flagged keywords
+            for keyword in found_keywords:
+                current_weight = self.scam_keyword_weights[keyword]
+                # Decrease weight but keep it above a minimum threshold
+                new_weight = max(0.1, current_weight - learning_rate)
+                self.scam_keyword_weights[keyword] = new_weight
+                print(f"Updated weight for '{keyword}': {current_weight:.2f} -> {new_weight:.2f}")
+                
+        # If classified as legitimate but model was wrong (false negative)
+        elif user_label and len(found_keywords) > 0:
+            # Increase weights for missed keywords
+            for keyword in found_keywords:
+                current_weight = self.scam_keyword_weights[keyword]
+                # Increase weight but keep it below a maximum threshold
+                new_weight = min(0.9, current_weight + learning_rate)
+                self.scam_keyword_weights[keyword] = new_weight
+                print(f"Updated weight for '{keyword}': {current_weight:.2f} -> {new_weight:.2f}")

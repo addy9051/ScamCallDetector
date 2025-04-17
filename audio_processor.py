@@ -345,8 +345,15 @@ class AudioProcessor:
             
             # Use OpenAI Whisper API for Hindi speech recognition
             try:
+                # Check if API key is available
+                api_key = os.environ.get("OPENAI_API_KEY")
+                if not api_key:
+                    print("Error: OPENAI_API_KEY environment variable not set")
+                    return "Speech transcription unavailable: API key missing"
+                
                 # Initialize OpenAI client with API key
-                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                from openai import OpenAI
+                client = OpenAI(api_key=api_key)
                 
                 # Call Whisper API to transcribe the audio
                 with open(file_path, "rb") as audio_file:
@@ -362,9 +369,20 @@ class AudioProcessor:
                 else:
                     return "No speech detected in audio"
                     
+            except ImportError:
+                print("Error: OpenAI library not installed")
+                return "Speech transcription unavailable: OpenAI library not installed"
+                
             except Exception as api_error:
-                print(f"OpenAI API error: {api_error}")
-                return f"Transcription error: {str(api_error)}"
+                error_message = str(api_error)
+                print(f"OpenAI API error: {error_message}")
+                
+                if "invalid_api_key" in error_message.lower():
+                    return "Speech transcription unavailable: Invalid API key. Please update your API key."
+                elif "exceeded your current quota" in error_message.lower():
+                    return "Speech transcription unavailable: API quota exceeded"
+                else:
+                    return "Speech transcription unavailable. Using audio features only."
             
         except Exception as e:
             print(f"Error in speech detection: {e}")
