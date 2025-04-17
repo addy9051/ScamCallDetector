@@ -69,60 +69,95 @@ class ScamDetectionModel:
             "आभार": -0.3       # gratitude
         }
     
-    def predict(self, audio_features, text=None):
+    def predict(self, audio_features, text=None, sensitivity=0.5):
         """
         Make a prediction about whether an audio clip is a scam or not.
         
         Args:
             audio_features: Extracted audio features
             text: Transcribed text (if available)
+            sensitivity: Detection sensitivity (0.0-1.0), higher values make the model
+                        more likely to classify calls as scams
             
         Returns:
             tuple: (is_scam (bool), confidence (float))
         """
         # Simulate prediction for demonstration
-        time.sleep(1)  # Simulate processing time
+        time.sleep(0.5)  # Simulate processing time (reduced for better UX)
         
-        # Base score (slightly favoring non-scam by default)
-        scam_score = 0.35
+        # Base score (adjusted by sensitivity)
+        # Lower sensitivity means we start with a lower base score (less likely to be scam)
+        # Higher sensitivity means we start with a higher base score (more likely to be scam)
+        base_score_adjustment = (sensitivity - 0.5) * 0.2
+        scam_score = 0.35 + base_score_adjustment
         
         # Analyze text if available
         if text is not None and text:
             # Analyze text for scam keywords
             for keyword, weight in self.scam_keyword_weights.items():
                 if keyword in text:
-                    scam_score += weight * 0.1  # Increment score based on keyword weight
+                    # Adjust keyword weight based on sensitivity
+                    adjusted_weight = weight * (0.8 + sensitivity * 0.4)
+                    scam_score += adjusted_weight * 0.1
             
             # Check for safe keywords that might reduce the scam score
             for keyword, weight in self.safe_keyword_weights.items():
                 if keyword in text:
-                    scam_score += weight * 0.1  # Reduce score based on safe keyword weight
+                    # For safe keywords, lower sensitivity reduces their impact
+                    # (making the model more cautious)
+                    discount_factor = 1.0 - (sensitivity * 0.4)
+                    scam_score += weight * 0.1 * discount_factor
         
         # Analyze audio features
         # In a real model, we would analyze specific patterns in the audio features
-        # For this demo, we'll use some simple heuristics
+        # For this demo, we'll use some heuristics
         
-        # 1. Use the average of the first few MFCCs as a proxy for voice characteristics
-        # Higher values might indicate more emotional/urgent speech
+        # 1. Check for rapid speech (a common scam indicator)
         if len(audio_features) > 10:
             feature_avg = np.mean(audio_features[:10])
-            # Scale this to a small contribution to the score
-            scam_score += (feature_avg - np.mean(audio_features)) * 0.01
+            # Scale this to a small contribution to the score, influenced by sensitivity
+            scam_score += (feature_avg - np.mean(audio_features)) * 0.01 * (1.0 + sensitivity)
         
         # 2. Check the variance of features as a proxy for speech variability
         # Scammers often have more variable speech patterns
         feature_variance = np.var(audio_features)
-        if feature_variance > 1.0:  # Arbitrary threshold
-            scam_score += 0.05
+        variance_threshold = 1.0 - (sensitivity * 0.5)  # Lower threshold with higher sensitivity
+        if feature_variance > variance_threshold:
+            scam_score += 0.05 * (1.0 + sensitivity)
+        
+        # 3. Check for extreme values in audio features
+        # Scammers may have more extreme emotional patterns
+        if len(audio_features) > 0:
+            max_feature = np.max(np.abs(audio_features))
+            if max_feature > 5.0:  # Arbitrary threshold for extreme values
+                scam_score += 0.05 * sensitivity
         
         # Add some randomness for demonstration purposes
-        scam_score += (random.random() - 0.5) * 0.2
+        # The randomness is reduced with higher sensitivity for more consistent results
+        randomness_factor = 0.2 * (1.0 - sensitivity * 0.5)
+        scam_score += (random.random() - 0.5) * randomness_factor
+        
+        # Adjust threshold based on sensitivity
+        # Higher sensitivity means lower threshold to classify as scam
+        threshold = 0.5 - (sensitivity - 0.5) * 0.2
         
         # Clamp the score between 0.1 and 0.9 to avoid extreme confidence
         scam_score = max(0.1, min(0.9, scam_score))
         
-        is_scam = scam_score > 0.5
-        confidence = scam_score * 100 if is_scam else (1 - scam_score) * 100
+        is_scam = scam_score > threshold
+        
+        # Calculate confidence, adjusted for sensitivity
+        # Higher sensitivity leads to higher confidence when classified as scam
+        if is_scam:
+            # More confident in scam predictions with high sensitivity
+            confidence_boost = sensitivity * 10
+            confidence = (scam_score * 100) + confidence_boost
+            confidence = min(confidence, 99.0)  # Cap at 99%
+        else:
+            # More confident in legitimate predictions with low sensitivity
+            confidence_boost = (1.0 - sensitivity) * 10
+            confidence = ((1 - scam_score) * 100) + confidence_boost
+            confidence = min(confidence, 99.0)  # Cap at 99%
         
         return is_scam, confidence
     
