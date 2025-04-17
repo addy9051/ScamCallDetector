@@ -319,48 +319,37 @@ class AudioProcessor:
         like Google's Speech-to-Text API or Hugging Face's Wav2Vec2 model
         fine-tuned for Hindi.
         
-        For now, this returns Hindi placeholder texts that include scam-related 
-        and legitimate conversation snippets for demonstration.
+        This function now checks if the audio contains actual speech and
+        returns appropriate feedback.
         """
-        # In a real implementation:
-        # 1. Load a pretrained ASR model for Hindi
-        # 2. Process the audio file
-        # 3. Return the transcribed text
-        
-        # Generate a semi-random placeholder text for demonstration
-        import random
-        
-        # Common phrases in Hindi scam calls
-        scam_phrases = [
-            "आपका खाता निलंबित कर दिया गया है",  # Your account has been suspended
-            "तुरंत कार्रवाई करने की आवश्यकता है",  # Immediate action required 
-            "आपका कार्ड ब्लॉक कर दिया जाएगा",     # Your card will be blocked
-            "अभी इस नंबर पर कॉल करें",            # Call this number immediately
-            "निजी जानकारी की आवश्यकता है",         # Personal information required
-            "आपका ओटीपी बताएं",                    # Tell us your OTP
-            "आपके अकाउंट से पैसे निकाल लिए गए हैं", # Money has been withdrawn from your account
-            "यह सरकारी नोटिस है"                   # This is a government notice
-        ]
-        
-        # Common phrases in legitimate Hindi conversations
-        legitimate_phrases = [
-            "आपकी सहायता के लिए धन्यवाद",          # Thank you for your help
-            "आप कैसे हैं?",                        # How are you?
-            "क्या मैं आपकी मदद कर सकता हूं?",      # Can I help you?
-            "कृपया अपना प्रश्न बताएं",             # Please tell me your question
-            "हम आपकी सेवा में तत्पर हैं",           # We are ready to serve you
-            "आपके लिए उपलब्ध विकल्प हैं",          # Options available for you
-            "आप हमारी वेबसाइट पर जाकर जानकारी प्राप्त कर सकते हैं" # You can visit our website for information
-        ]
-        
-        # Generate a random text that may include some scam or legitimate phrases
-        if random.random() < 0.4:  # 40% chance of generating scam-like text
-            # Create a scam-like text with 2-3 scam phrases
-            num_phrases = random.randint(2, 3)
-            selected_phrases = random.sample(scam_phrases, num_phrases)
-            return " ".join(selected_phrases)
-        else:
-            # Create a legitimate-sounding text with 2-3 phrases
-            num_phrases = random.randint(2, 3)
-            selected_phrases = random.sample(legitimate_phrases, num_phrases)
-            return " ".join(selected_phrases)
+        try:
+            # Load the audio file
+            waveform, sr = self.load_audio(file_path)
+            
+            # Check if audio contains meaningful sound (not just silence)
+            # Calculate RMS energy as a measure of audio volume
+            rms_energy = np.sqrt(np.mean(waveform**2))
+            
+            # Define a threshold for silence
+            silence_threshold = 0.01
+            
+            # If the audio is mostly silent
+            if rms_energy < silence_threshold:
+                return "No audio detected"
+                
+            # Get audio duration in seconds
+            duration = len(waveform) / sr
+            
+            # If audio is too short (less than 0.5 seconds), it's likely not speech
+            if duration < 0.5:
+                return "Audio too short, no speech detected"
+            
+            # In a real implementation, we would use an actual Hindi ASR model here.
+            # For now, we'll indicate that this is a placeholder and actual transcription
+            # would require integration with a proper Hindi speech recognition API.
+            
+            return "Hindi speech detected (transcription unavailable - would require OpenAI Whisper API or other Hindi ASR model)"
+            
+        except Exception as e:
+            print(f"Error in speech detection: {e}")
+            return "Error processing audio"
