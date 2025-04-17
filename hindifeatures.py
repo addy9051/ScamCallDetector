@@ -189,25 +189,34 @@ class HindiFeatureExtractor:
         # 9. Harmonic-to-noise ratio (voice quality measure)
         harmonic_ratio = np.mean(librosa.effects.harmonic(waveform)) / np.mean(waveform) if np.mean(waveform) != 0 else 0
         
-        # Combine all Hindi-specific features
-        hindi_features = np.array([
+        # Combine all Hindi-specific features as a flat list
+        # Make sure all values are scalar (not arrays)
+        hindi_features_list = [
             # Pitch features
-            pitch_mean, pitch_std, pitch_range, pitch_change_rate,
+            float(pitch_mean), float(pitch_std), float(pitch_range), float(pitch_change_rate),
             # Rhythm features
-            tempo, beat_regularity,
+            float(tempo), float(beat_regularity),
             # Speech rate
-            speech_rate,
+            float(speech_rate),
             # Voice quality
-            centroid, flatness, zcr, harmonic_ratio,
+            float(centroid), float(flatness), float(zcr), float(harmonic_ratio),
             # Pause analysis
-            pause_ratio,
-            # Add all phoneme energy features
-            *phoneme_features,
-            # Add formant analysis
-            *formants,
-            # Add scam pattern features
-            *scam_pattern_features
-        ])
+            float(pause_ratio)
+        ]
+        
+        # Add phoneme energy features (ensure they're scalar)
+        for pf in phoneme_features:
+            hindi_features_list.append(float(pf))
+            
+        # Add formant analysis (ensure they're scalar)
+        for f in formants:
+            hindi_features_list.append(float(f))
+            
+        # Add scam pattern features (already scalar)
+        hindi_features_list.extend(scam_pattern_features)
+        
+        # Convert to numpy array
+        hindi_features = np.array(hindi_features_list)
         
         return hindi_features
     
@@ -290,16 +299,20 @@ class HindiFeatureExtractor:
                     
                 phonetic_features.extend(peak_features)
         
-        # Flatten all features into a single vector
-        flat_features = [f.flatten() for f in phonetic_features if hasattr(f, 'flatten') and f.size > 0]
-        scalar_features = [f for f in phonetic_features if not hasattr(f, 'flatten') and np.isscalar(f)]
+        # Manually flatten all features into a uniform 1D vector
+        flattened_features = []
         
-        # Combine all features
-        if flat_features and scalar_features:
-            return np.concatenate(flat_features + [np.array(scalar_features)])
-        elif flat_features:
-            return np.concatenate(flat_features)
-        elif scalar_features:
-            return np.array(scalar_features)
+        for feature in phonetic_features:
+            if hasattr(feature, 'flatten') and feature.size > 0:
+                # For array features, convert each element to a scalar
+                for value in feature.flatten():
+                    flattened_features.append(float(value))
+            elif np.isscalar(feature):
+                # For scalar features, add directly
+                flattened_features.append(float(feature))
+        
+        # Return the flattened feature vector
+        if flattened_features:
+            return np.array(flattened_features)
         else:
             return np.array([])
