@@ -1,0 +1,200 @@
+# Define functions for processing and displaying results
+def process_audio(audio_file_path, sensitivity=0.5):
+    """Process the audio file and display results"""
+    with st.spinner("Analyzing audio..."):
+        # Extract features
+        features = st.session_state.audio_processor.extract_features(audio_file_path)
+        
+        # Get ASR text (in real implementation, would use a Hindi ASR model)
+        text = st.session_state.audio_processor.get_text_from_audio(audio_file_path)
+        
+        # Make prediction (with sensitivity adjustment)
+        prediction, confidence = st.session_state.model.predict(features, text, sensitivity)
+        
+        # Get acoustic features for visualization
+        waveform, sr = st.session_state.audio_processor.load_audio(audio_file_path)
+        mfccs = st.session_state.audio_processor.get_mfccs(audio_file_path)
+        acoustic_features = utils.extract_acoustic_features(waveform, sr)
+        
+        # Highlight scam keywords if text is available
+        found_keywords = []
+        highlighted_text = text
+        if text and hasattr(st.session_state.model, 'scam_keyword_weights'):
+            highlighted_text, found_keywords = utils.highlight_scam_keywords(
+                text, st.session_state.model.scam_keyword_weights
+            )
+        
+        # Format prediction for display
+        prediction_text, confidence_text, color = utils.format_prediction(prediction, confidence)
+        
+        # Store analysis results
+        analysis = {
+            'prediction': prediction,
+            'confidence': confidence,
+            'prediction_text': prediction_text,
+            'confidence_text': confidence_text,
+            'color': color,
+            'text': text,
+            'highlighted_text': highlighted_text,
+            'keywords': found_keywords,
+            'waveform': waveform,
+            'sr': sr,
+            'mfccs': mfccs,
+            'acoustic_features': acoustic_features,
+            'audio_path': audio_file_path
+        }
+        
+        # Store in session state for later reference
+        st.session_state.last_analysis = analysis
+        
+        # Update history
+        if len(st.session_state.history) > 0 and st.session_state.history.iloc[0]['Filename'] == os.path.basename(audio_file_path):
+            # Skip if this exact file was just analyzed (prevents duplicates)
+            pass
+        else:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            filename = os.path.basename(audio_file_path)
+            keywords_str = ", ".join(found_keywords) if found_keywords else "None detected"
+            
+            new_entry = pd.DataFrame([{
+                'Timestamp': timestamp,
+                'Filename': filename,
+                'Prediction': 'Scam' if prediction else 'Not Scam',
+                'Confidence': f"{confidence:.1f}%",
+                'Keywords': keywords_str
+            }])
+            st.session_state.history = pd.concat([new_entry, st.session_state.history]).reset_index(drop=True)
+        
+        # Display results
+        display_analysis_results(analysis)
+        
+        return analysis
+
+def display_analysis_results(analysis):
+    """Display the analysis results in the UI"""
+    # Get results container
+    result_placeholder = st.empty()
+    
+    # Display results
+    with result_placeholder.container():
+        # Header with prediction result
+        st.markdown(
+            f"<h2 style='color: {analysis['color']};'>{analysis['prediction_text']}</h2>", 
+            unsafe_allow_html=True
+        )
+        st.markdown(f"<p><strong>{analysis['confidence_text']}</strong></p>", unsafe_allow_html=True)
+        
+        # Create two columns for details
+        details_col1, details_col2 = st.columns([3, 2])
+        
+        with details_col1:
+            if analysis['prediction']:
+                st.markdown("""
+                ### Warning Signs Detected:
+                - Suspicious voice patterns and intonation
+                - Known scam indicators in speech
+                - High similarity to known scam profiles
+                
+                ### Recommended Action:
+                - Do not share personal information
+                - Hang up and report to authorities
+                - Verify through official channels
+                """)
+            else:
+                st.markdown("""
+                ### Analysis:
+                - Voice characteristics match legitimate call patterns
+                - Natural speech rhythm and intonation
+                - Content does not match known scam scripts
+                
+                ### Note:
+                Always maintain caution with any calls requesting personal information.
+                """)
+        
+        with details_col2:
+            # Display any detected keywords
+            if analysis['keywords']:
+                st.markdown("### Suspicious Keywords Detected:")
+                for keyword in analysis['keywords']:
+                    st.markdown(f"- **{keyword}**")
+            
+            # Show basic acoustic feature stats
+            st.markdown("### Audio Characteristics:")
+            features = analysis['acoustic_features']
+            st.markdown(f"- Duration: {features['duration']:.2f} seconds")
+            st.markdown(f"- Speech/silence ratio: {(1-features['silence_ratio']):.2f}")
+            st.markdown(f"- Voice intensity: {'High' if features['energy'] > 0.05 else 'Normal'}")
+        
+        # Display detected speech (if any)
+        if analysis['text']:
+            st.subheader("Detected Speech:")
+            st.markdown(analysis['highlighted_text'])
+        
+        # Add feedback options
+        st.markdown("### Was this analysis helpful?")
+        feedback_col1, feedback_col2, feedback_col3 = st.columns([1, 1, 2])
+        
+        if feedback_col1.button("👍 Correct"):
+            st.session_state.feedback_count += 1
+            st.success("Thanks for your feedback! This helps improve our model.")
+            
+        if feedback_col2.button("👎 Incorrect"):
+            st.session_state.feedback_count += 1
+            
+            # Get the opposite prediction
+            correct_label = not analysis['prediction']
+            
+            # Update model with feedback
+            if 'text' in analysis and 'waveform' in analysis:
+                features = st.session_state.audio_processor.extract_features(analysis['audio_path'])
+                st.session_state.model.update_with_feedback(features, analysis['text'], correct_label)
+            
+            st.warning("Thanks for correcting us! This feedback helps improve our model.")
+
+def show_analysis_visuals(analysis):
+    """Display visualizations for the audio analysis"""
+    st.markdown("### Audio Analysis Visualizations")
+    
+    viz_col1, viz_col2 = st.columns(2)
+    
+    with viz_col1:
+        # Display waveform visualization
+        st.subheader("Audio Waveform")
+        fig, ax = plt.subplots(figsize=(10, 3))
+        librosa.display.waveshow(analysis['waveform'], sr=analysis['sr'], ax=ax)
+        ax.set_title('Audio Waveform')
+        ax.set_xlabel('Time (seconds)')
+        ax.set_ylabel('Amplitude')
+        st.pyplot(fig)
+    
+    with viz_col2:
+        # Display MFCC visualization
+        st.subheader("MFCC Features")
+        fig, ax = plt.subplots(figsize=(10, 3))
+        img = librosa.display.specshow(
+            analysis['mfccs'], 
+            x_axis='time', 
+            ax=ax, 
+            sr=analysis['sr'],
+            hop_length=512
+        )
+        ax.set_title('MFCC Features (Acoustic Fingerprint)')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('MFCC Coefficients')
+        fig.colorbar(img, ax=ax, format="%+2.f")
+        st.pyplot(fig)
+    
+    # Display spectrogram
+    st.subheader("Spectral Analysis")
+    fig, ax = plt.subplots(figsize=(10, 3))
+    D = librosa.amplitude_to_db(np.abs(librosa.stft(analysis['waveform'])), ref=np.max)
+    img = librosa.display.specshow(
+        D, 
+        y_axis='log', 
+        x_axis='time', 
+        ax=ax, 
+        sr=analysis['sr']
+    )
+    ax.set_title('Spectrogram')
+    fig.colorbar(img, ax=ax, format="%+2.0f dB")
+    st.pyplot(fig)
