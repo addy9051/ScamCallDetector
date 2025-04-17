@@ -143,6 +143,8 @@ class ScamDetectionModel:
         # Analyze text if available
         found_keywords = []
         keyword_count = 0
+        courier_found = False
+        police_found = False
         
         if text is not None and text:
             # Analyze text for scam keywords

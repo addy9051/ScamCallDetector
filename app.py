@@ -19,19 +19,32 @@ def process_audio(audio_file_path, sensitivity=0.5):
         # Extract features
         features = st.session_state.audio_processor.extract_features(audio_file_path)
         
-        # Get ASR text (in real implementation, would use a Hindi ASR model)
+        # Get ASR text using OpenAI Whisper for accurate Hindi transcription
         text = st.session_state.audio_processor.get_text_from_audio(audio_file_path)
         
-        # Make prediction (with sensitivity adjustment)
-        prediction, confidence = st.session_state.model.predict(features, text, sensitivity)
+        # Prepare for keyword tracking
+        found_keywords = []
         
         # Get acoustic features for visualization
         waveform, sr = st.session_state.audio_processor.load_audio(audio_file_path)
         mfccs = st.session_state.audio_processor.get_mfccs(audio_file_path)
         acoustic_features = utils.extract_acoustic_features(waveform, sr)
         
+        # Make prediction (with sensitivity adjustment)
+        result = st.session_state.model.predict(features, text, sensitivity)
+        
+        # Handle both dictionary result format and tuple format for backward compatibility
+        if isinstance(result, dict):
+            prediction = result["is_scam"]
+            confidence = result["confidence"]
+            # Add detected keywords to found_keywords if available
+            if "detected_keywords" in result and result["detected_keywords"]:
+                found_keywords.extend(result["detected_keywords"])
+        else:
+            # For backward compatibility, assume tuple return (is_scam, confidence)
+            prediction, confidence = result
+        
         # Highlight scam keywords if text is available
-        found_keywords = []
         highlighted_text = text
         if text and hasattr(st.session_state.model, 'scam_keyword_weights'):
             highlighted_text, found_keywords = utils.highlight_scam_keywords(
