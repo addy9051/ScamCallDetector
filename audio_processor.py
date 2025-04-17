@@ -6,6 +6,7 @@ import tempfile
 import time
 import threading
 import os
+from openai import OpenAI
 from hindifeatures import HindiFeatureExtractor
 
 class AudioProcessor:
@@ -313,14 +314,12 @@ class AudioProcessor:
     
     def get_text_from_audio(self, file_path):
         """
-        Convert Hindi speech to text using ASR.
+        Convert Hindi speech to text using OpenAI's Whisper API.
         
-        In a real implementation, this would use a Hindi-specific ASR model
-        like Google's Speech-to-Text API or Hugging Face's Wav2Vec2 model
-        fine-tuned for Hindi.
-        
-        This function now checks if the audio contains actual speech and
-        returns appropriate feedback.
+        This function:
+        1. Checks if the audio contains meaningful sound
+        2. Uses OpenAI's Whisper for accurate Hindi transcription
+        3. Returns the transcribed text or appropriate feedback
         """
         try:
             # Load the audio file
@@ -344,11 +343,28 @@ class AudioProcessor:
             if duration < 0.5:
                 return "Audio too short, no speech detected"
             
-            # In a real implementation, we would use an actual Hindi ASR model here.
-            # For now, we'll indicate that this is a placeholder and actual transcription
-            # would require integration with a proper Hindi speech recognition API.
-            
-            return "Hindi speech detected (transcription unavailable - would require OpenAI Whisper API or other Hindi ASR model)"
+            # Use OpenAI Whisper API for Hindi speech recognition
+            try:
+                # Initialize OpenAI client with API key
+                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                
+                # Call Whisper API to transcribe the audio
+                with open(file_path, "rb") as audio_file:
+                    transcription = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        language="hi"  # Specify Hindi language
+                    )
+                
+                # Check if we got a valid transcription
+                if transcription.text and len(transcription.text.strip()) > 0:
+                    return transcription.text
+                else:
+                    return "No speech detected in audio"
+                    
+            except Exception as api_error:
+                print(f"OpenAI API error: {api_error}")
+                return f"Transcription error: {str(api_error)}"
             
         except Exception as e:
             print(f"Error in speech detection: {e}")
